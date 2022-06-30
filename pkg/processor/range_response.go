@@ -62,6 +62,10 @@ func (p *rangeResponseProcessor) ProcessRange(startHeight uint64, blocks []types
 	min, max := p.getActiveRange()
 
 	blockCount := len(blocks)
+	if startHeight < min {
+		// remove blocks not in range
+		blockCount -= int(min - startHeight)
+	}
 	if uint64(blockCount) > p.size {
 		blockCount = int(p.size)
 	}
@@ -72,9 +76,8 @@ func (p *rangeResponseProcessor) ProcessRange(startHeight uint64, blocks []types
 	}
 
 	p.offsetMutex.RLock()
-	startProcessingFromOffset := startHeight - min
-	for i := startProcessingFromOffset; i < uint64(startProcessingFromOffset+uint64(blockCount)); i++ {
-		bucketIndex := (uint64(p.bucketOffset) + i) % p.size
+	for i := 0; i < blockCount; i++ {
+		bucketIndex := (uint64(p.bucketOffset) + uint64(i)) % p.size
 		p.bucketMutexes[bucketIndex].Lock()
 		bucketValue := p.buckets[bucketIndex]
 		*bucketValue += 1
@@ -97,7 +100,7 @@ func (p *rangeResponseProcessor) ProcessRange(startHeight uint64, blocks []types
 		for i := uint64(0); i < p.size && blockFilled; i++ {
 			index := (uint64(p.bucketOffset) + i) % p.size
 			p.bucketMutexes[index].Lock()
-			if *p.buckets[index] > p.responses {
+			if *p.buckets[index] >= p.responses {
 				*p.buckets[index] = 0
 				completedBlocks++
 			} else {
